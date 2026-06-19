@@ -1,0 +1,20 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large Data files
+*.csv
+*.pdf
+*.pptx
+*.png
+*.jpeg
+*.jpg
+*.zip
+
+# Folders containing FDD/EFDD modal results/data (often contain large/many numpy or temporary files)
+phone_z4-8_f1-11_n3_FDD/
+phone_z4-8_f1-11_n60_EFDD/
+z4-8_f1-11_n30_EFDD/
+z4-8_f1-11_n3_FDD/
+z4-8_f1-11_n60_EFDD/
