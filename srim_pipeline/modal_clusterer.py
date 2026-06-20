@@ -178,6 +178,33 @@ class ModalClusterer:
         mpc_val = ((lam1 - lam2) / (lam1 + lam2)) ** 2
         return float(np.clip(mpc_val, 0.0, 1.0))
 
+    @staticmethod
+    def get_real_shape(phi: np.ndarray) -> np.ndarray:
+        """
+        Extract real mode shape by rotating the complex vector to the principal
+        phase axis, mitigating arbitrary global phase shifts.
+        """
+        phi_r = np.real(phi)
+        phi_i = np.imag(phi)
+        
+        S_rr = float(phi_r @ phi_r)
+        S_ii = float(phi_i @ phi_i)
+        S_ri = float(phi_r @ phi_i)
+        
+        # Principal phase angle
+        theta = 0.5 * np.arctan2(2.0 * S_ri, S_rr - S_ii)
+        
+        # Rotate to align with real axis
+        phi_rot = phi * np.exp(-1j * theta)
+        real_shape = np.real(phi_rot)
+        
+        # Enforce consistent sign (max absolute value is positive)
+        max_idx = np.argmax(np.abs(real_shape))
+        if real_shape[max_idx] < 0:
+            real_shape = -real_shape
+            
+        return real_shape
+
     # ================================================================== #
     #  Step 0: Stabilization Diagram                                       #
     # ================================================================== #
@@ -425,10 +452,6 @@ class ModalClusterer:
 
             if len(accepted) >= self.min_cluster_size:
                 cleaned[cid] = accepted
-            elif accepted:
-                # Adaptive fallback: keep even small clusters to avoid segments
-                # with zero identifications (paper S.2.2.2 note on trade-off)
-                cleaned[cid] = accepted
 
         return cleaned
 
@@ -459,9 +482,17 @@ class ModalClusterer:
         std_freq = float(np.std(freqs))
         std_damp = float(np.std(damps))
 
-        # Representative shape: average of real parts, normalised
-        # (MAC-based selection would be ideal but mean-real is robust)
-        mean_shape = np.mean(np.array([np.real(s) for s in shapes]), axis=0)
+        # Representative shape: average of aligned real parts, normalised
+        aligned_shapes = [ModalClusterer.get_real_shape(s) for s in shapes]
+        
+        # Align all shapes to the first one before averaging to avoid cancellation
+        if aligned_shapes:
+            ref_s = aligned_shapes[0]
+            for i in range(1, len(aligned_shapes)):
+                if aligned_shapes[i] @ ref_s < 0:
+                    aligned_shapes[i] = -aligned_shapes[i]
+        
+        mean_shape = np.mean(np.array(aligned_shapes), axis=0)
         norm = np.max(np.abs(mean_shape))
         if norm > 0:
             mean_shape = mean_shape / norm
@@ -475,6 +506,58 @@ class ModalClusterer:
             "n_poles": len(poles),
         }
 
+    def verify_and_merge_modes(
+        self, 
+        cluster_modes: List[Tuple[int, List[Pole]]], 
+        k: float = 3.0, 
+        gate: str = "OR", 
+        mac_threshold: float = 0.85
+    ) -> Tuple[List[ClusterResult], Dict[int, List[Pole]]]:
+        """
+        Statistically verify if extracted clusters represent distinct physical modes.
+        If they fail the distinctness criteria based on k-sigma boundaries and MAC,
+        their underlying poles are merged and the mode is re-aggregated.
+        """
+        aggregated = [self.aggregate_cluster(poles) for _, poles in cluster_modes]
+        pole_lists = [poles for _, poles in cluster_modes]
+        
+        merged = True
+        while merged:
+            merged = False
+            N = len(aggregated)
+            for i in range(N):
+                for j in range(i + 1, N):
+                    mA = aggregated[i]
+                    mB = aggregated[j]
+                    
+                    df = abs(mA["freq"] - mB["freq"])
+                    sig_f = max(mA["freq_std"], mB["freq_std"])
+                    
+                    # Compute MAC between aggregated shapes
+                    mac_AB = self.mac(mA["shape"], mB["shape"])
+                    
+                    # Distinctness checks
+                    f_sep = df > (k * sig_f) if sig_f > 1e-6 else df > 1e-4
+                    s_sep = mac_AB < mac_threshold
+                    
+                    if gate.upper() == "AND":
+                        distinct = f_sep and s_sep
+                    else:  # Default to OR
+                        distinct = f_sep or s_sep
+                        
+                    if not distinct:
+                        # Merge mode B into mode A
+                        pole_lists[i].extend(pole_lists[j])
+                        aggregated[i] = self.aggregate_cluster(pole_lists[i])
+                        del pole_lists[j]
+                        del aggregated[j]
+                        merged = True
+                        break
+                if merged:
+                    break
+                    
+        final_clusters = {i + 1: p for i, p in enumerate(pole_lists)}
+        return aggregated, final_clusters
     # ================================================================== #
     #  Main entry point                                                    #
     # ================================================================== #

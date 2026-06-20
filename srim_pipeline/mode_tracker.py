@@ -191,7 +191,7 @@ class ModeTracker:
         for cid, poles in sorted_clusters:
             freqs  = np.array([p["freq"]    for p in poles])
             damps  = np.array([p["damping"] for p in poles])
-            shapes = [np.real(p["shape"])   for p in poles]
+            shapes = [ModalClusterer.get_real_shape(p["shape"]) for p in poles]
 
             f_ref = float(np.median(freqs))
             d_ref = float(np.median(damps))
@@ -201,7 +201,7 @@ class ModeTracker:
                 ref_s = shapes[0]
                 aligned_shapes = []
                 for s in shapes:
-                    if np.real(s @ ref_s) < 0:
+                    if s @ ref_s < 0:
                         aligned_shapes.append(-s)
                     else:
                         aligned_shapes.append(s)
@@ -221,6 +221,28 @@ class ModeTracker:
                 f"ξ_ref = {d_ref*100:.2f}%,  n_poles = {len(poles)}"
             )
 
+        return self
+
+    def set_explicit_references(self, final_modes: List[Dict]) -> "ModeTracker":
+        """
+        Directly sets the reference modes from a list of aggregated mode dictionaries.
+        This ensures the tracking uses exactly the modes picked by the methodology steps.
+        """
+        # Sort by frequency just in case
+        sorted_modes = sorted(final_modes, key=lambda m: m["freq"])
+        self.n_modes = len(sorted_modes)
+        
+        self._ref_shapes = [m["shape"] for m in sorted_modes]
+        self._ref_freqs = [m["freq"] for m in sorted_modes]
+        self._ref_damping = [m["damping"] for m in sorted_modes]
+        self._ref_n_poles = [m.get("n_poles", 0) for m in sorted_modes]
+        
+        print(f"\n[ModeTracker] Phase 1 (Explicit): Set {self.n_modes} explicit reference modes from methodology:")
+        print("  " + "-" * 50)
+        for i, m in enumerate(sorted_modes):
+            print(f"  Mode {i+1}: f_ref = {m['freq']:.3f} Hz, "
+                  f"ξ_ref = {m['damping']*100:.2f}%,  n_poles = {m.get('n_poles', 0)}")
+        print("  " + "-" * 50 + "\n")
         return self
 
     def _global_cluster(
@@ -356,8 +378,8 @@ class ModeTracker:
                     continue
 
                 # MAC with reference shape (use real part comparison)
-                # Real-valued reference vs complex pole shape: use real part
-                phi_pole_real = np.real(phi_pole)
+                # Apply phase alignment to the pole shape first
+                phi_pole_real = ModalClusterer.get_real_shape(phi_pole)
                 norm1 = np.linalg.norm(phi_pole_real)
                 norm2 = np.linalg.norm(phi_ref)
                 if norm1 < 1e-15 or norm2 < 1e-15:
@@ -398,7 +420,7 @@ class ModeTracker:
             
             freqs  = np.array([p["freq"]    for p in filtered_poles])
             damps  = np.array([p["damping"] for p in filtered_poles])
-            shapes = [np.real(p["shape"])   for p in filtered_poles]
+            shapes = [ModalClusterer.get_real_shape(p["shape"]) for p in filtered_poles]
 
             # Median aggregation (robust)
             f_med  = float(np.median(freqs))
@@ -408,7 +430,7 @@ class ModeTracker:
                 ref_s = self._ref_shapes[i]
                 aligned_shapes = []
                 for s in shapes:
-                    if np.real(s @ ref_s) < 0:
+                    if s @ ref_s < 0:
                         aligned_shapes.append(-s)
                     else:
                         aligned_shapes.append(s)
@@ -455,11 +477,41 @@ class ModeTracker:
         -------
         list of TrackResult, same length as input.
         """
-        results = []
+        import numpy as np
+        
+        # Pass 1: Assign with the global reference frequencies and a wide cross-day window
+        # to find where the modes are located today.
+        original_window = self.freq_window
+        self.freq_window = 0.15  # Wide cross-day window
+        
+        pass1_results = []
         for seg_poles in all_poles_by_order:
             tr = self.assign_modes(seg_poles)
-            results.append(tr)
-        return results
+            pass1_results.append(tr)
+            
+        # Compute the daily median frequencies from Pass 1
+        daily_freqs = list(self._ref_freqs)
+        for i in range(self.n_modes):
+            mode_freqs = [tr[i]["freq"] for tr in pass1_results if tr.get(i) is not None]
+            if mode_freqs:
+                daily_freqs[i] = float(np.median(mode_freqs))
+                
+        # Pass 2: Temporarily set the reference frequencies to the DAILY medians,
+        # and tighten the tracking window to reduce intra-day scatter.
+        original_refs = list(self._ref_freqs)
+        self._ref_freqs = daily_freqs
+        self.freq_window = 0.05  # Tight intra-day window
+        
+        pass2_results = []
+        for seg_poles in all_poles_by_order:
+            tr = self.assign_modes(seg_poles)
+            pass2_results.append(tr)
+            
+        # Restore the global references and original window for the next day's tracking
+        self._ref_freqs = original_refs
+        self.freq_window = original_window
+        
+        return pass2_results
 
     # ================================================================== #
     #  Phase 3 — Select best physical modes across all days                #

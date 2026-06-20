@@ -1,0 +1,27 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Anomaly detection performance metrics (Tran \& Ozer 2020, Table~1).}
+\label{tab:detection}
+\begin{tabular}{llcccccc}
+\toprule
+$k$ & Operator & TPR & TNR & PPV & NPV & FPR & FDR \\
+\midrule
+1 & AND & 0.016 & 1.000 & 1.000 & 0.114 & 0.000 & 0.000 \\
+ & OR & 0.986 & 0.112 & 0.897 & 0.500 & 0.888 & 0.103 \\
+ & FREQ_ONLY & 0.965 & 0.238 & 0.909 & 0.466 & 0.762 & 0.091 \\
+ & DAMP_ONLY & 0.775 & 0.476 & 0.921 & 0.212 & 0.524 & 0.079 \\
+\midrule
+2 & AND & 0.002 & 1.000 & 1.000 & 0.113 & 0.000 & 0.000 \\
+ & OR & 0.822 & 0.720 & 0.959 & 0.340 & 0.280 & 0.041 \\
+ & FREQ_ONLY & 0.715 & 0.853 & 0.975 & 0.275 & 0.147 & 0.025 \\
+ & DAMP_ONLY & 0.403 & 0.839 & 0.952 & 0.152 & 0.161 & 0.048 \\
+\midrule
+3 & AND & 0.000 & 1.000 & -- & 0.113 & 0.000 & -- \\
+ & OR & 0.634 & 0.853 & 0.971 & 0.228 & 0.147 & 0.029 \\
+ & FREQ_ONLY & 0.484 & 0.937 & 0.984 & 0.187 & 0.063 & 0.016 \\
+ & DAMP_ONLY & 0.266 & 0.916 & 0.961 & 0.137 & 0.084 & 0.039 \\
+\midrule
+\bottomrule
+\end{tabular}
+\end{table}

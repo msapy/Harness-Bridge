@@ -42,6 +42,8 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 import numpy as np
 from matplotlib.colors import LinearSegmentedColormap
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # ---------- Local modules ---------------------------------------------------
 SCRIPT_DIR = Path(__file__).parent
@@ -79,7 +81,18 @@ DAY_STATES = {
     1: 0, 2: 1, 3: 1, 4: 1, 5: 1, 6: 1, 7: 1, 8: 2, 9: 3, 10: 3, 11: 3
 }
 
-MODE_COLORS = ["#60a5fa", "#f472b6", "#34d399"]   # blue, pink, green per mode
+MODE_COLORS = [
+    "#60a5fa", # blue
+    "#f472b6", # pink
+    "#34d399", # green
+    "#fbbf24", # yellow/amber
+    "#a78bfa", # purple
+    "#f87171", # red
+    "#2dd4bf", # teal
+    "#a3e635", # lime
+    "#38bdf8", # light blue
+    "#fb923c", # orange
+]
 
 
 # ---------------------------------------------------------------------------
@@ -235,7 +248,7 @@ def plot_stabilization_day1(
               labelcolor="#e2e8f0", fontsize=8, loc="upper right")
 
     fig.tight_layout()
-    out = out_dir / "fig1_stabilization_day1.png"
+    out = out_dir / "Fig_02_Stabilization_with_PSD.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 1] {out.name}")
@@ -285,7 +298,7 @@ def plot_freq_evolution(
     fig.suptitle("Harness Bridge — Natural Frequency Evolution Across 10 Days",
                  color="#e2e8f0", fontsize=13, fontweight="bold")
     fig.tight_layout()
-    out = out_dir / "fig2_freq_evolution.png"
+    out = out_dir / "Fig_06_Freq_Evolution_10Days.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 2] {out.name}")
@@ -332,7 +345,7 @@ def plot_damp_evolution(
     fig.suptitle("Harness Bridge — Damping Ratio Evolution Across 10 Days",
                  color="#e2e8f0", fontsize=13, fontweight="bold")
     fig.tight_layout()
-    out = out_dir / "fig3_damp_evolution.png"
+    out = out_dir / "Fig_07_Damp_Evolution_10Days.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 3] {out.name}")
@@ -386,7 +399,7 @@ def plot_mac_within_day1(
     plt.colorbar(im, ax=ax, label="MAC", fraction=0.046, pad=0.04).ax.yaxis.set_tick_params(color="#94a3b8")
 
     fig.tight_layout()
-    out = out_dir / "fig4_mac_within_day1.png"
+    out = out_dir / "Fig_09_MAC_Within_Day1.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 4] {out.name}")
@@ -411,7 +424,7 @@ def plot_mac_cross_day(
     plt.colorbar(im, ax=ax, label="MAC").ax.yaxis.set_tick_params(color="#94a3b8")
 
     fig.tight_layout()
-    fname = f"fig{fig_num}_mac_cross_day_mode{mode_idx+1}.png"
+    fname = f"Fig_{fig_num:02d}_MAC_CrossDay_M{mode_idx+1}.png"
     out   = out_dir / fname
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
@@ -490,41 +503,25 @@ def plot_mode_shapes(
                 y_fine /= norm
             return y_fine
 
-        # Plot Reference Shape
-        ref_shape = tracker.reference_shapes[m] if m < len(tracker.reference_shapes) else None
-        if ref_shape is not None and len(ref_shape) == n_sensors:
-            y_ref_fine = get_interpolated_shape(ref_shape)
-            ax.plot(x_fine, y_ref_fine, color="white", lw=2, ls="--",
-                    label="Day 1 Reference", zorder=5)
-
-        # Plot Day Groups Shapes
-        for gi, (gname, gdays) in enumerate(state_groups.items()):
-            shapes = []
-            for d in gdays:
-                s = all_days_stats.get(d, {}).get(m, {})
-                ms = s.get("mean_shape", None)
-                if ms is not None and len(ms) == n_sensors:
-                    shapes.append(ms)
-            if shapes:
-                interpolated_curves = []
-                for s in shapes:
-                    # Norm first to avoid large scaling mismatches
-                    norm_s = s / (np.max(np.abs(s)) + 1e-30)
-                    interpolated_curves.append(get_interpolated_shape(norm_s))
+        # Plot Each Day
+        # Create a colormap for the days
+        cmap = plt.get_cmap('tab10')
+        for d_idx, d in enumerate(days):
+            s = all_days_stats.get(d, {}).get(m, {})
+            ms = s.get("mean_shape", None)
+            if ms is not None and len(ms) == n_sensors:
+                # Norm first to avoid large scaling mismatches
+                norm_s = ms / (np.max(np.abs(ms)) + 1e-30)
+                y_fine = get_interpolated_shape(norm_s)
                 
-                mean_y = np.mean(np.vstack(interpolated_curves), axis=0)
-                norm_mean = np.max(np.abs(mean_y))
-                if norm_mean > 0:
-                    mean_y /= norm_mean
-                    
-                col = group_colors[gi]
-                ax.plot(x_fine, mean_y, color=col, lw=2,
-                        label=gname, alpha=0.85, zorder=3)
+                # Day 1 is dashed, others are solid
+                ls = "--" if d == 1 else "-"
+                lw = 2.5 if d == 1 else 1.5
+                alpha = 1.0 if d == 1 else 0.8
+                col = cmap(d_idx % 10)
                 
-                if len(interpolated_curves) > 1:
-                    stacked = np.vstack(interpolated_curves)
-                    ax.fill_between(x_fine, stacked.min(axis=0), stacked.max(axis=0),
-                                    color=col, alpha=0.12, zorder=2)
+                ax.plot(x_fine, y_fine, color=col, lw=lw, ls=ls,
+                        label=f"Day {d}", alpha=alpha, zorder=3)
 
         # Draw supports on the plot baseline
         for j in all_supports:
@@ -543,15 +540,100 @@ def plot_mode_shapes(
         ax.set_ylim(-1.2, 1.2)
         ax.axhline(0, color="#334155", lw=1.0, zorder=1)
         ax.legend(facecolor="#1e293b", edgecolor="#334155",
-                  labelcolor="#e2e8f0", fontsize=7, loc="lower right")
+                  labelcolor="#e2e8f0", fontsize=7, loc="lower right", ncol=2)
 
-    fig.suptitle("Identified Mode Shapes Across Structural States (BCs: J5, J6 Rollers)",
+    fig.suptitle("Identified Mode Shapes Across All Days (BCs: J5, J6 Rollers)",
                  color="#e2e8f0", fontsize=13, fontweight="bold")
     fig.tight_layout()
-    out = out_dir / "fig8_mode_shapes.png"
+    out = out_dir / "Fig_05_Mode_Shapes.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 8] {out.name}")
+    
+    # -------------------------------------------------------------------------
+    # Generate Interactive Plotly HTML
+    # -------------------------------------------------------------------------
+    plotly_colors = [
+        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
+        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+    ]
+    
+    fig_html = make_subplots(rows=1, cols=n_modes, subplot_titles=[f"Mode {m+1} Shape" for m in range(n_modes)])
+    
+    for m in range(n_modes):
+        col_idx = m + 1
+        
+        # Helper to interpolate shape for plotly
+        def get_interpolated_shape(shape_vals):
+            known_x, known_y = [], []
+            for j in range(1, 12):
+                pos = joint_positions[j - 1]
+                if j in all_supports:
+                    known_x.append(pos)
+                    known_y.append(0.0)
+                elif j in sensor_joints:
+                    sensor_idx = sensor_joints.index(j)
+                    known_x.append(pos)
+                    known_y.append(shape_vals[sensor_idx])
+            
+            sorted_idx = np.argsort(known_x)
+            kx = np.array(known_x)[sorted_idx]
+            ky = np.array(known_y)[sorted_idx]
+            
+            from scipy.interpolate import CubicSpline
+            cs = CubicSpline(kx, ky, bc_type='natural')
+            y_fine = cs(x_fine)
+            norm = np.max(np.abs(y_fine))
+            if norm > 0:
+                y_fine /= norm
+            return y_fine
+            
+        for d_idx, d in enumerate(days):
+            s = all_days_stats.get(d, {}).get(m, {})
+            ms = s.get("mean_shape", None)
+            if ms is not None and len(ms) == n_sensors:
+                norm_s = ms / (np.max(np.abs(ms)) + 1e-30)
+                y_fine = get_interpolated_shape(norm_s)
+                
+                ls = "dash" if d == 1 else "solid"
+                lw = 3 if d == 1 else 2
+                
+                fig_html.add_trace(go.Scatter(
+                    x=x_fine, y=y_fine, mode='lines',
+                    name=f"Day {d}",
+                    line=dict(color=plotly_colors[d_idx % len(plotly_colors)], width=lw, dash=ls),
+                    showlegend=True if m == 0 else False,
+                    legendgroup=f"Day {d}"
+                ), row=1, col=col_idx)
+
+        # Draw zero line
+        fig_html.add_hline(y=0, line_width=1, line_color="#334155", row=1, col=col_idx)
+        
+        # Draw supports
+        for j in all_supports:
+            pos = joint_positions[j - 1]
+            fig_html.add_trace(go.Scatter(
+                x=[pos], y=[0], mode='markers+text',
+                marker=dict(symbol='triangle-up', size=10, color='#475569'),
+                text=[f"J{j}"], textposition="bottom center",
+                showlegend=False, hoverinfo='skip'
+            ), row=1, col=col_idx)
+
+        # Update axes
+        fig_html.update_xaxes(title_text="Bridge Span (m)", range=[-0.5, joint_positions[-1] + 0.5], row=1, col=col_idx)
+        fig_html.update_yaxes(title_text="Normalised Deflection" if m == 0 else "", range=[-1.2, 1.2], row=1, col=col_idx)
+
+    fig_html.update_layout(
+        title="Interactive Mode Shapes Across All Days (Click legend to toggle)",
+        template="plotly_dark",
+        plot_bgcolor="#0f172a",
+        paper_bgcolor="#0f172a",
+        height=500
+    )
+    
+    out_html = out_dir / "Fig_05_Mode_Shapes.html"
+    fig_html.write_html(str(out_html))
+    print(f"  [Fig 8 HTML] {out_html.name}")
 
 
 def plot_identification_rate(
@@ -586,7 +668,7 @@ def plot_identification_rate(
               labelcolor="#e2e8f0", fontsize=9)
 
     fig.tight_layout()
-    out = out_dir / "fig9_identification_rate.png"
+    out = out_dir / "Fig_11_Identification_Rate.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 9] {out.name}")
@@ -658,7 +740,7 @@ def plot_freq_scatter_all(
     fig.suptitle("Harness Bridge — Per-Segment Modal Frequencies (All Days)",
                  color="#e2e8f0", fontsize=13, fontweight="bold")
     fig.tight_layout()
-    out = out_dir / "fig10_freq_scatter_all.png"
+    out = out_dir / "Fig_08_Freq_Scatter_Segments.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 10] {out.name}")
@@ -714,7 +796,7 @@ def plot_anomaly_detection(
         spine.set_edgecolor("#334155")
 
     fig.tight_layout()
-    out = out_dir / "fig11_anomaly_detection.png"
+    out = out_dir / "Fig_12_Anomaly_Detection.png"
     fig.savefig(out, dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
     plt.close(fig)
     print(f"  [Fig 11] {out.name}")
@@ -751,7 +833,8 @@ def run_survey(args):
         lim_mac=args.lim_mac,
         mpc_threshold=args.mpc_threshold,
         max_damping=args.max_damping,
-        min_cluster_size=1,
+        min_cluster_size=args.min_cluster_size,
+        cluster_threshold=args.cluster_thresh,
     )
     tracker = ModeTracker(
         n_modes=3,
@@ -761,7 +844,7 @@ def run_survey(args):
         mpc_threshold=args.mpc_threshold,
         max_damping=args.max_damping,
     )
-    validator = ModalValidator(n_modes=3, n_days=len(args.days))
+    # Validator is initialized after tracker modes are established in Step 2
 
     print(f"Segment  : {args.seg_length}s, {args.overlap*100:.0f}% overlap")
     print(f"SRIM     : i={args.i_factor}, orders 2..{args.max_order}")
@@ -796,16 +879,41 @@ def run_survey(args):
     print("─" * 50)
 
     day1_poles = all_poles.get(1, [])
-    tracker.build_references(day1_poles)
-    print("\n" + tracker.reference_summary())
-
-    # Also get Day 1 cleared poles for stabilization diagram (seg 0)
     if day1_poles:
         stable0  = clusterer.build_stabilization(day1_poles[0])
         cleared0 = clusterer.clear_diagram(stable0)
+        raw_clusters = clusterer.cluster_poles(cleared0)
+        clean_clusters = clusterer.remove_outliers(raw_clusters)
+        cluster_modes = sorted(
+            clean_clusters.items(),
+            key=lambda kv: np.median([p["freq"] for p in kv[1]]),
+        )
+        # Use k-sigma statistical verification to merge indistinct modes
+        final_modes, clean_clusters = clusterer.verify_and_merge_modes(
+            cluster_modes,
+            k=args.merge_k,
+            gate=args.merge_gate,
+            mac_threshold=args.merge_mac
+        )
+        
+        # Inject explicit methodology modes
+        tracker.set_explicit_references(final_modes)
+        
+        # Save for Fig 1
+        meth_data_dict = {
+            'poles_by_order': day1_poles[0],
+            'all_poles': [p for plist in day1_poles[0].values() for p in plist],
+            'stable_poles': stable0,
+            'cleared_poles': cleared0,
+            'clean_clusters': clean_clusters,
+            'final_modes': final_modes
+        }
     else:
-        stable0  = []
+        stable0 = []
         cleared0 = []
+        meth_data_dict = {}
+
+    validator = ModalValidator(n_modes=tracker.n_modes, n_days=len(args.days))
 
     # =================================================================== #
     #  Step 3: Track modes across all days                                #
@@ -821,8 +929,9 @@ def run_survey(args):
         day_track = tracker.track_all_days(all_poles[day])
         all_track_results.extend(day_track)
 
-    # Cross-Day Selection: find the true 3 bending modes out of all candidates
-    all_track_results = tracker.select_best_modes(all_track_results, top_n=3)
+    # Cross-Day Selection: We keep all tracking modes since we injected explicit methodology modes.
+    # We don't truncate, we just ensure they are sorted by frequency (which they already are).
+    # all_track_results = tracker.select_best_modes(all_track_results, top_n=tracker.n_modes)
 
     # Re-slice all_track_results into per_day_results
     idx = 0
@@ -834,11 +943,13 @@ def run_survey(args):
 
         n_found = [
             sum(1 for tr in day_track if tr.get(m) is not None)
-            for m in range(3)
+            for m in range(tracker.n_modes)
         ]
+        
+        # Build dynamic string for all modes
+        found_str = " ".join([f"M{m+1}={n_found[m]:3d}" for m in range(tracker.n_modes)])
         print(
-            f"  Day {day:2d}: {segments_per_day[day]:3d} segs | "
-            f"M1={n_found[0]:3d} M2={n_found[1]:3d} M3={n_found[2]:3d}"
+            f"  Day {day:2d}: {segments_per_day[day]:3d} segs | {found_str}"
         )
 
     # =================================================================== #
@@ -855,7 +966,7 @@ def run_survey(args):
     print(f"\n{'Day':>4} | {'Mode':>5} | {'f (Hz)':>10} | {'ξ (%)':>8} | {'MPC':>6} | {'IR (%)':>7}")
     print("-" * 55)
     for d in args.days:
-        for m in range(3):
+        for m in range(tracker.n_modes):
             s   = all_days_stats.get(d, {}).get(m, {})
             fm  = s.get("freq_median")
             dm  = s.get("damp_median")
@@ -914,18 +1025,50 @@ def run_survey(args):
 
     days = args.days
 
-    plot_stabilization_day1(day1_poles[0] if day1_poles else {}, cleared0,
-                            tracker, OUTPUT_DIR, fs=args.fs)
+    from paper_figures import plot_fig01_methodology_4panel, plot_fig02_to_04_multiday_clusters
+    import pandas as pd
+    
+    # 1. Methodology Fig 01
+    plot_fig01_methodology_4panel(meth_data_dict, OUTPUT_DIR)
+
+    # 2. Multi-day Figs 02-04
+    print("Preparing representative segments for multi-day methodology figures...")
+    target_days = []
+    for d in days:
+        label = f"Day {d} ({STATE_NAMES.get(DAY_STATES.get(d, 0), 'Unknown')})"
+        target_days.append((d, label))
+
+    multiday_data_dict = {}
+    for day_num, label in target_days:
+        if day_num in all_poles and len(all_poles[day_num]) > 0:
+            csv_path = None
+            for p in Path(args.data_dir).glob(f"day{day_num}*.csv"):
+                csv_path = p
+                break
+            if csv_path:
+                from data_segmenter import DataSegmenter
+                seg = DataSegmenter(fs=args.fs, segment_length_s=args.seg_length, overlap=args.overlap)
+                seg.load_csv(csv_path)
+                segments = seg.get_segments()
+                if segments:
+                    multiday_data_dict[label] = {
+                        'clusterer': clusterer,
+                        'poles_by_order': all_poles[day_num][0],
+                        'data': segments[0]['data']
+                    }
+    plot_fig02_to_04_multiday_clusters(multiday_data_dict, args.fs, OUTPUT_DIR)
+
+    # 3. Evolution and tracking Figs 05-12
+    plot_mode_shapes(all_days_stats, tracker, days, OUTPUT_DIR)
     plot_freq_evolution(all_days_stats, days, OUTPUT_DIR)
     plot_damp_evolution(all_days_stats, days, OUTPUT_DIR)
+    plot_freq_scatter_all(per_day_results, days, segments_per_day, tracker.n_modes, OUTPUT_DIR)
     plot_mac_within_day1(all_days_stats, validator, OUTPUT_DIR)
 
-    for m in range(3):
-        plot_mac_cross_day(all_days_stats, validator, days, m, 5 + m, OUTPUT_DIR)
+    for m in range(tracker.n_modes):
+        plot_mac_cross_day(all_days_stats, validator, days, m, 10, OUTPUT_DIR)
 
-    plot_mode_shapes(all_days_stats, tracker, days, OUTPUT_DIR)
-    plot_identification_rate(all_days_stats, days, 3, OUTPUT_DIR)
-    plot_freq_scatter_all(per_day_results, days, segments_per_day, 3, OUTPUT_DIR)
+    plot_identification_rate(all_days_stats, days, tracker.n_modes, OUTPUT_DIR)
     plot_anomaly_detection(detection_metrics, OUTPUT_DIR)
 
     # =================================================================== #
@@ -995,7 +1138,7 @@ def run_survey(args):
         },
         "freq_shifts_pct": {
             str(m): {str(d): v for d, v in shifts[m].items()}
-            for m in range(3)
+            for m in range(tracker.n_modes)
         },
         "detection_metrics": {
             str(k): {
@@ -1044,15 +1187,20 @@ def parse_args():
 
     # Clusterer
     p.add_argument("--lim-f",      type=float, default=0.02)
-    p.add_argument("--lim-mac",    type=float, default=0.05,
-                   help="Tighter than default for better mode separation")
-    p.add_argument("--mpc-threshold", type=float, default=0.50)
-    p.add_argument("--max-damping",   type=float, default=0.10)
+    p.add_argument("--lim-mac", type=float, default=0.05, help="MAC stability limit (1 - lim)")
+    p.add_argument("--mpc-threshold", type=float, default=0.50, help="MPC cutoff for Type 3")
+    p.add_argument("--cluster-thresh", type=float, default=0.15, help="Cutoff for hierarchical clustering")
+    p.add_argument("--min-cluster-size", type=int, default=5, help="Min poles per cluster")
+    p.add_argument("--max-damping", type=float, default=0.10, help="Maximum physical damping ratio")
+    
+    p.add_argument("--merge-k", type=float, default=3.0, help="k-sigma boundary for mode merging")
+    p.add_argument("--merge-gate", type=str, default="OR", choices=["AND", "OR"], help="Logic gate for distinctness")
+    p.add_argument("--merge-mac", type=float, default=0.85, help="MAC threshold for distinctness")
 
     # Tracker
     p.add_argument("--mac-min",          type=float, default=0.70)
-    p.add_argument("--freq-window",      type=float, default=0.50,
-                   help="±50% frequency window for MAC assignment")
+    p.add_argument("--freq-window",      type=float, default=0.15,
+                   help="±15% frequency window for MAC assignment")
     p.add_argument("--global-cluster-thresh", type=float, default=0.25,
                    help="Distance cut for Day-1 global clustering")
 
