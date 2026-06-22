@@ -258,10 +258,13 @@ def plot_stabilization_day1(
 def plot_freq_evolution(
     all_days_stats: Dict,
     days: List[int],
+    n_modes: int,
     out_dir: Path,
 ):
     """Fig 2: Frequency evolution (median ± 1σ) per mode per day."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5), facecolor="#0f172a")
+    fig, axes = plt.subplots(1, n_modes, figsize=(6 * n_modes, 5), facecolor="#0f172a")
+    if n_modes == 1:
+        axes = [axes]
 
     for m, ax in enumerate(axes):
         _style_ax(ax, "Day", "Frequency (Hz)", f"Mode {m+1} — Natural Frequency")
@@ -307,10 +310,13 @@ def plot_freq_evolution(
 def plot_damp_evolution(
     all_days_stats: Dict,
     days: List[int],
+    n_modes: int,
     out_dir: Path,
 ):
     """Fig 3: Damping evolution per mode per day."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5), facecolor="#0f172a")
+    fig, axes = plt.subplots(1, n_modes, figsize=(6 * n_modes, 5), facecolor="#0f172a")
+    if n_modes == 1:
+        axes = [axes]
 
     for m, ax in enumerate(axes):
         _style_ax(ax, "Day", "Damping Ratio (%)", f"Mode {m+1} — Damping Ratio")
@@ -1060,8 +1066,8 @@ def run_survey(args):
 
     # 3. Evolution and tracking Figs 05-12
     plot_mode_shapes(all_days_stats, tracker, days, OUTPUT_DIR)
-    plot_freq_evolution(all_days_stats, days, OUTPUT_DIR)
-    plot_damp_evolution(all_days_stats, days, OUTPUT_DIR)
+    plot_freq_evolution(all_days_stats, days, tracker.n_modes, OUTPUT_DIR)
+    plot_damp_evolution(all_days_stats, days, tracker.n_modes, OUTPUT_DIR)
     plot_freq_scatter_all(per_day_results, days, segments_per_day, tracker.n_modes, OUTPUT_DIR)
     plot_mac_within_day1(all_days_stats, validator, OUTPUT_DIR)
 
